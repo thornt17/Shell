@@ -18,43 +18,25 @@ int executeLine(char *input, struct TokenInfo *toks, int tokenCount)
 {
   pid_t pid, newpid;
   int status;
-  int ind = STDIN_FILENO;
-  int outd = STDOUT_FILENO;
+  int ind;// = STDIN_FILENO;
+  int outd;// = STDOUT_FILENO;
   int fd[2];
   char * myfilein = NULL;
   char * myfileout = NULL;
   char * argument_array[MAX_TOKENS];
-  mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+  mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH; //for ouput redirect
 
-    memset(fd,0,sizeof(fd));
-    memset(argument_array,0,sizeof(argument_array));
+    memset(fd,0,sizeof(fd)); //clears fd
+    memset(argument_array,0,sizeof(argument_array)); //clears argumentss
     int j;
-    //int k = 0;
 
-    //if(pipecount > 0)
-    //{
-      for(j = 0; j < tokenCount; j++)
-      {
-        if(toks[j].type == TTArgument || toks[j].type == TTCommand)
-        {
-          argument_array[j] = toks[j].command;
-        }
-      }
-    //}
-    /*else
+   for(j = 0; j < tokenCount; j++)
+   {
+    if(toks[j].type == TTCommand || toks[j].type == TTArgument)
     {
-      for(j = 0; j < tokenCount; j++, k++)
-      {
-        if(toks[j].type == TTArgument || toks[j].type == TTCommand)
-        {
-          argument_array[k] = toks[j].command;
-        }
-        else
-        {
-          k--;
-        }
-      }
-    }*/
+        argument_array[j] = toks[j].command;
+    }
+   }
 
     argument_array[tokenCount] = NULL;
 
@@ -70,7 +52,7 @@ int executeLine(char *input, struct TokenInfo *toks, int tokenCount)
         {
           perror("ERROR");
         }
-        //close(STDOUT_FILENO);
+        close(STDOUT_FILENO);
         dup2(outd, 1);
         close(outd);
         //count1++;
@@ -85,7 +67,7 @@ int executeLine(char *input, struct TokenInfo *toks, int tokenCount)
         {
           perror("ERROR");
         }
-        //close(STDIN_FILENO);
+        close(STDIN_FILENO);
         dup2(ind, 0);
         close(ind);
         //count2++;
@@ -97,20 +79,20 @@ int executeLine(char *input, struct TokenInfo *toks, int tokenCount)
     {
       pid = fork();
 
-      if(pid == -1)
+      if(pid == -1) //error fork
       {
         perror("ERROR");
       }
-      else if(pid == 0)
+      else if(pid == 0) //child
       {
-        printf("%s %s %s \n", argument_array[0],argument_array[1],argument_array[2]);
-        execvp(argument_array[0], &argument_array[0]); //break here to see arguments with gdb
+        //printf("%s %s %s %s %s\n", argument_array[0],argument_array[1],argument_array[2],argument_array[3],argument_array[4]);
+        execvp(argument_array[0], argument_array); //break here to see arguments with gdb
         perror("ERROR");
       }
-      else
+      else //if parent
       {
         //printf("waiting");
-        if(backcount == 0)
+        if(backcount == 0) //if not background running process
         {
           wait(&status);
         }
@@ -118,36 +100,37 @@ int executeLine(char *input, struct TokenInfo *toks, int tokenCount)
     }
     else //piping
     {
-
-      if(pipe(fd) == -1)
+      if(pipe(&(fd[0])) == -1)//set up pipes and error check
       {
         perror("ERROR");
       }
-      pid = fork();
+      pid = fork(); //child process
       if(pid == -1)
       {
         perror("ERROR");
       }
       else if(pid == 0) //child
       {
+        //printf("%s %s %s %s %s\n", argument_array[0],argument_array[1],argument_array[2],argument_array[3],argument_array[4]);
         dup2(fd[1], STDOUT_FILENO);
         close(fd[0]);
         execvp(argument_array[0],argument_array);
         perror("ERROR");
         return 2;
       }
-      else
+      else //parent
       {
           wait(&status);
         
       }
-      newpid = fork();
-      if(newpid == -1)
+      newpid = fork(); //second child process
+      if(newpid == -1) //error
       {
         perror("ERROR");
       }
-      else if(newpid == 0)
+      else if(newpid == 0) //child, this is not always working
       {
+        //printf("%s %s %s %s %s\n", argument_array[0],argument_array[1],argument_array[2],argument_array[3],argument_array[4]);
         dup2(fd[0], STDIN_FILENO);
         close(fd[1]);
         execvp(argument_array[0],argument_array);
@@ -156,7 +139,7 @@ int executeLine(char *input, struct TokenInfo *toks, int tokenCount)
       }
       else
       {
-        wait(&status);
+        wait(&status); //waits for child
       }
       close(fd[0]);
       close(fd[1]);
@@ -164,6 +147,15 @@ int executeLine(char *input, struct TokenInfo *toks, int tokenCount)
       return 0;
     }
   
+  //close(ind);
+  //close(outd);
+
+  //myfilein = NULL;
+  //myfileout = NULL;
+  fflush(stdin);
+  fflush(stdout);
+
+
   return 2;       /* bogus */
 }
 
@@ -194,30 +186,32 @@ int main(int argc, char* argv[])
     }
   }
 
-  while(1){ // main loop of shell
+  while(((int)input) != EOF){ // main loop of shell, breKS WHEN CTRL-D IS ENTERED
     int tokenCount = 0, totalCmds =0;
     struct TokenInfo tokens[MAX_TOKENS];
 
     fflush(stdin);
     fflush(stdout);
 
+    memset(&input, 0, sizeof(input)); //RESETTING INPUT
 
     if (print_prompt) {
       printf("my_shell: ");
       
     }
-    else
+    else //prints nothing if -n is entered as an argument
     {
       printf("");
     }
     
+
     if (get_line(input, MAX_INPUT_LINE) < 0) {
       exit(-1);
     }
       
-    tokenCount = parser(input, tokens, &totalCmds);
+    tokenCount = parser(input, tokens, &totalCmds); //parses input into tokens
     if (tokenCount >= 0) {	
-      executeLine(input, tokens, tokenCount);
+      executeLine(input, tokens, tokenCount); //executes tokens
     }
 
     memset(&tokens, 0, sizeof(tokens)); //clears the value of the struct so it doesn't remember old commands
